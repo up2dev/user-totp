@@ -415,14 +415,14 @@ modification non encore poussée :**
 ### `.env`
 
 ```env
-USER_TOTP_ISSUER="Nexora"
+USER_TOTP_ISSUER="My App"
 USER_TOTP_ENABLED_METHODS=totp,email
 USER_TOTP_ROUTE_PREFIX=totp
 USER_TOTP_MIDDLEWARE=lpfauth:sanctum
 USER_TOTP_RESPONSE_FORMATTER=App\Support\LumePackTotpResponseFormatter
 USER_TOTP_ENFORCED=false
 USER_TOTP_EXEMPTION_RESOLVER=App\Support\LumePackTotpExemptionResolver
-USER_TOTP_EMAIL_OTP_SUBJECT="Votre code de connexion Nexora"
+USER_TOTP_EMAIL_OTP_SUBJECT="Votre code de connexion My App"
 ```
 
 > ⚠️ **Piège** : `USER_TOTP_MIDDLEWARE` doit correspondre au middleware
@@ -586,7 +586,3 @@ USER_TOTP_EMAIL_OTP_MAILABLE=App\Mail\TotpEmailOtpMail
 
 > ⚠️ La classe fournie doit accepter un unique argument `string $code` au
 > constructeur, comme la Mailable par défaut du package.
-
-## 9. Tester
-
-Collections Bruno/Postman disponibles séparément.
