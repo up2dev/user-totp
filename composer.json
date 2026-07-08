@@ -1,0 +1,31 @@
+{
+    "name": "up2dev/user-totp",
+    "description": "Ajoute un TOTP (2FA) optionnel et par utilisateur au-dessus d'un système d'authentification existant, sans le modifier. Aucun service externe : tout le calcul TOTP est local (RFC 6238).",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "up2dev"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/database": "^11.0|^12.0",
+        "illuminate/mail": "^11.0|^12.0",
+        "pragmarx/google2fa": "^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Up2Dev\\UserTotp\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Up2Dev\\UserTotp\\UserTotpServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable"
+}
