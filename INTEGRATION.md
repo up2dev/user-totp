@@ -155,8 +155,9 @@ class AuthController extends BaseController
             $this->setResponse(trans('foundation::auth.email'), 400);
         } else {
             $methods = $this->twoFactor->enabledMethods($user->id);
+            $isExempt = method_exists($user, 'isTotpExempt') && $user->isTotpExempt();
 
-            if (!empty($methods)) {
+            if (!empty($methods) && !$isExempt) {
                 $pendingToken = $this->pendingLogin->issue($user->id, $user->email);
 
                 if (count($methods) === 1) {
@@ -168,7 +169,7 @@ class AuthController extends BaseController
                     'available_methods' => $methods,
                     'pending_token' => $pendingToken,
                 ]);
-            } elseif (method_exists($user, 'mustEnrollTotp') && $user->mustEnrollTotp()) {
+            } elseif (!$isExempt && method_exists($user, 'mustEnrollTotp') && $user->mustEnrollTotp()) {
                 $this->setResponse([
                     'requires_totp_setup' => true,
                     'available_methods' => config('user-totp.enabled_methods', ['totp', 'email']),
@@ -295,7 +296,21 @@ class LumePackTotpResponseFormatter implements ResponseFormatter
 
 ### `app/Support/LumePackTotpExemptionResolver.php`
 
-Optionnel, uniquement utile avec `USER_TOTP_ENFORCED=true`.
+Vérifie une **permission** (via `whereHas` sur les rôles) plutôt qu'une liste
+d'UID de rôles en dur — une permission peut être attachée à plusieurs rôles.
+
+> ℹ️ **Portée de l'exemption** : dans l'`AuthController` ci-dessus, un
+> utilisateur exempté (`isTotpExempt()` à `true`) contourne le 2FA **dans
+> tous les cas**, pas seulement l'obligation d'enrôlement. Même s'il a
+> lui-même activé une méthode (TOTP ou email) de son plein gré, son login se
+> termine directement sans lui redemander de code — l'exemption prime sur
+> toute méthode déjà configurée. Utile typiquement pour des comptes de
+> service ou un compte de secours administrateur. Si vous voulez au contraire
+> qu'un utilisateur ayant volontairement activé une méthode soit toujours
+> tenu de la fournir (l'exemption ne jouant que sur l'obligation, pas sur un
+> choix personnel), retirez le `&& !$isExempt` du premier `if` de `login()`
+> — seule la branche `mustEnrollTotp()` doit alors tenir compte de
+> l'exemption.
 
 ```php
 <?php
@@ -306,21 +321,51 @@ use Up2Dev\UserTotp\Contracts\ExemptionResolver;
 
 class LumePackTotpExemptionResolver implements ExemptionResolver
 {
-    protected array $exemptRoleUids = [
-        // 'SERVICE_ACCOUNT',
-    ];
+    protected string $exemptPermissionUid = 'DUMMY_OVERPASS_TOTP';
 
     public function isExempt(mixed $user): bool
     {
-        if (empty($this->exemptRoleUids)) {
-            return false;
-        }
-
         return $user->roles()
-            ->whereIn('uid', $this->exemptRoleUids)
+            ->whereHas('permissions', fn ($query) => $query->where('uid', $this->exemptPermissionUid))
             ->exists();
     }
 }
+```
+
+Cette permission ne correspond à aucune route, mais le vendor a un mécanisme
+dédié pour ça : `config('permissions.additional')`, lu par
+`rightsmanagement --action=create-permissions`. Créez `config/permissions.php`
+(nouveau fichier côté app, absent par défaut du starter) :
+
+```php
+<?php
+
+return [
+    'additional' => [
+        'DUMMY_OVERPASS_TOTP',
+    ],
+    'route_exceptions' => [
+        'auth:*',
+        'auth/login:*',
+        'auth/refresh:*',
+        'auth/logout:*',
+        'auth/user/email/{token}:*',
+        'auth/user/login:*',
+        'auth/pwd/forgot:*',
+        'auth/pwd/renew:*',
+        'auth/pwd/{token}:*'
+    ]
+];
+```
+
+Puis relancez `php artisan rightsmanagement --action=create-permissions` —
+`DUMMY_OVERPASS_TOTP` est créée automatiquement avec le reste. Reste à l'attacher
+au(x) rôle(s) concernés :
+
+```php
+$permission = \LumePack\Foundation\Data\Models\Auth\Permission::where('uid', 'DUMMY_OVERPASS_TOTP')->first();
+$role = \LumePack\Foundation\Data\Models\Auth\Role::where('uid', 'ADMIN')->first();
+$role->permissions()->syncWithoutDetaching([$permission->id]);
 ```
 
 ### `app/Providers/AppServiceProvider.php`
@@ -415,14 +460,14 @@ modification non encore poussée :**
 ### `.env`
 
 ```env
-USER_TOTP_ISSUER="My App"
+USER_TOTP_ISSUER="App Name"
 USER_TOTP_ENABLED_METHODS=totp,email
 USER_TOTP_ROUTE_PREFIX=totp
 USER_TOTP_MIDDLEWARE=lpfauth:sanctum
 USER_TOTP_RESPONSE_FORMATTER=App\Support\LumePackTotpResponseFormatter
 USER_TOTP_ENFORCED=false
 USER_TOTP_EXEMPTION_RESOLVER=App\Support\LumePackTotpExemptionResolver
-USER_TOTP_EMAIL_OTP_SUBJECT="Votre code de connexion My App"
+USER_TOTP_EMAIL_OTP_SUBJECT="Votre code de connexion App Name"
 ```
 
 > ⚠️ **Piège** : `USER_TOTP_MIDDLEWARE` doit correspondre au middleware
@@ -516,7 +561,7 @@ activation automatique.
 
 ```env
 USER_TOTP_ENFORCED=true
-USER_TOTP_EXEMPTION_RESOLVER=App\Support\LumePackTotpExemptionResolver
+USER_DUMMY_OVERPASS_TOTPION_RESOLVER=App\Support\LumePackTotpExemptionResolver
 ```
 
 Flux pour un utilisateur pas encore enrôlé :
